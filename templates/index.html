@@ -1,1 +1,72 @@
 
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebCraft AI - وكيل إنشاء المواقع</title>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Controls -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo-icon">✨</div>
+                <h2>WebCraft AI</h2>
+            </div>
+            <p class="tagline">اكتب فكرتك والذكاء الاصطناعي يبني لك موقعاً كاملاً ومتحركاً جاهزاً للرفع.</p>
+
+            <form id="generate-form">
+                <div class="form-group">
+                    <label for="prompt">وصف الموقع المطلوب:</label>
+                    <textarea id="prompt" name="prompt" rows="5" placeholder="مثال: موقع بورتفوليو احترافي لمطور ألعاب بتصميم مظلم (Dark Mode) يحتوي على معرض أعمال، قسم مهارات، وزر تواصل..." required></textarea>
+                </div>
+                <button type="submit" id="generate-btn" class="btn btn-primary">
+                    <span class="btn-text">🚀 إنشاء الموقع الآن</span>
+                    <div class="spinner hidden"></div>
+                </button>
+            </form>
+
+            <div id="action-panel" class="action-panel hidden">
+                <h3>جاهز للتحميل!</h3>
+                <p>تم توليد الأكواد بنجاح. يمكنك معاينة الموقع على اليسار أو تحميل الملفات مباشرة.</p>
+                <form id="download-form" action="/download" method="POST">
+                    <input type="hidden" name="html" id="download-html">
+                    <input type="hidden" name="css" id="download-css">
+                    <input type="hidden" name="js" id="download-js">
+                    <button type="submit" class="btn btn-success">📦 تحميل مجلد الموقع (.ZIP)</button>
+                </form>
+            </div>
+        </aside>
+
+        <!-- Main Preview Window -->
+        <main class="preview-area">
+            <div class="preview-header">
+                <div class="window-dots">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                </div>
+                <div class="preview-title">شاشة المعاينة الحية (Live Preview)</div>
+                <div class="device-toggle">
+                    <button class="active" onclick="setDevice('desktop')">💻 شاشة كبيرة</button>
+                    <button onclick="setDevice('mobile')">📱 موبايل</button>
+                </div>
+            </div>
+
+            <div class="iframe-container" id="iframe-container">
+                <div class="placeholder-state" id="placeholder-state">
+                    <div class="empty-icon">🎨</div>
+                    <h3>معاينة الموقع ستظهر هنا</h3>
+                    <p>أدخل الوصف في القائمة الجانبية واضغط على "إنشاء الموقع".</p>
+                </div>
+                <iframe id="preview-iframe" class="preview-iframe hidden"></iframe>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
