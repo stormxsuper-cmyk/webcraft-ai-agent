@@ -3,27 +3,21 @@ import json
 import zipfile
 import io
 from pathlib import Path
-from fastapi import FastAPI, Form, Request
+from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from groq import Groq
 
 app = FastAPI()
 
-# Calculate absolute path of the repository root
+# Calculate absolute path of the root directory
 BASE_DIR = Path(__file__).resolve().parent
-
-# Set absolute path for templates & static directory
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
 
-# Mount Static Files
+# Mount Static Files if directory exists
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-
-# Mount Jinja2 Templates safely
-templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Initialize Groq client
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -43,20 +37,86 @@ You MUST respond ONLY with a raw JSON object with this EXACT structure (no markd
 """
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    # Fallback check in case Jinja2 misses the path
-    index_path = TEMPLATES_DIR / "index.html"
-    if index_path.exists():
-        return templates.TemplateResponse("index.html", {"request": request})
+async def read_root():
+    # List of candidate paths for index.html
+    possible_paths = [
+        TEMPLATES_DIR / "index.html",
+        BASE_DIR / "index.html",
+        Path("templates/index.html"),
+        Path("index.html")
+    ]
     
-    # Direct file read if TemplateResponse fails
-    with open(index_path, "r", encoding="utf-8") as f:
-        return HTMLResponse(content=f.read())
+    for path in possible_paths:
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+
+    # Fallback HTML UI if index.html is missing
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>WebCraft AI</title>
+        <style>
+            body { font-family: system-ui, sans-serif; background: #0f172a; color: white; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+            .card { background: #1e293b; padding: 2rem; border-radius: 12px; width: 90%; max-width: 600px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+            h1 { margin-top: 0; color: #38bdf8; }
+            textarea { width: 100%; height: 100px; background: #0f172a; color: white; border: 1px solid #334155; border-radius: 8px; padding: 10px; margin: 10px 0; box-sizing: border-box; }
+            button { background: #0284c7; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
+            button:hover { background: #0369a1; }
+            #output { margin-top: 20px; background: #0f172a; padding: 10px; border-radius: 8px; display: none; }
+            iframe { width: 100%; height: 300px; border: none; background: white; margin-top: 10px; border-radius: 6px; }
+        </style>
+    </head>
+    <body>
+        <div class="card">
+            <h1>🚀 WebCraft AI</h1>
+            <p>Describe the website you want to build:</p>
+            <textarea id="prompt" placeholder="e.g., A portfolio website for a game developer with dark mode..."></textarea>
+            <button onclick="generate()">Generate Website</button>
+            <div id="output">
+                <h3>Result:</h3>
+                <iframe id="preview"></iframe>
+            </div>
+        </div>
+        <script>
+            async function generate() {
+                const prompt = document.getElementById('prompt').value;
+                if(!prompt) return alert('Please enter a description');
+                const btn = document.querySelector('button');
+                btn.innerText = 'Generating...';
+                btn.disabled = true;
+                
+                const formData = new FormData();
+                formData.append('prompt', prompt);
+                
+                try {
+                    const res = await fetch('/generate', { method: 'POST', body: formData });
+                    const data = await res.json();
+                    if(data.success) {
+                        document.getElementById('output').style.display = 'block';
+                        const doc = `<html><head><style>${data.css}</style></head><body>${data.html}<script>${data.js}<\/script></body></html>`;
+                        document.getElementById('preview').srcdoc = doc;
+                    } else {
+                        alert('Error: ' + data.error);
+                    }
+                } catch(e) {
+                    alert('Request failed: ' + e);
+                }
+                btn.innerText = 'Generate Website';
+                btn.disabled = false;
+            }
+        </script>
+    </body>
+    </html>
+    """
 
 @app.post("/generate")
 async def generate_site(prompt: str = Form(...)):
     if not client:
-        return JSONResponse(status_code=500, content={"success": False, "error": "GROQ_API_KEY is missing in Railway variables."})
+        return JSONResponse(status_code=500, content={"success": False, "error": "GROQ_API_KEY is missing in Railway Variables."})
 
     try:
         response = client.chat.completions.create(
