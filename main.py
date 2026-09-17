@@ -2,6 +2,7 @@ import os
 import json
 import zipfile
 import io
+from pathlib import Path
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -10,9 +11,12 @@ from groq import Groq
 
 app = FastAPI()
 
-# Mount static files and templates
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+# Get base directory path dynamically
+BASE_DIR = Path(__file__).resolve().parent
+
+# Mount static files and templates using absolute paths
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
 
 # Initialize Groq client
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
