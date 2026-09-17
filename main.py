@@ -11,12 +11,19 @@ from groq import Groq
 
 app = FastAPI()
 
-# Get base directory path dynamically
+# Calculate absolute path of the repository root
 BASE_DIR = Path(__file__).resolve().parent
 
-# Mount static files and templates using absolute paths
-app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
-templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+# Set absolute path for templates & static directory
+TEMPLATES_DIR = BASE_DIR / "templates"
+STATIC_DIR = BASE_DIR / "static"
+
+# Mount Static Files
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# Mount Jinja2 Templates safely
+templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # Initialize Groq client
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -37,12 +44,19 @@ You MUST respond ONLY with a raw JSON object with this EXACT structure (no markd
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    # Fallback check in case Jinja2 misses the path
+    index_path = TEMPLATES_DIR / "index.html"
+    if index_path.exists():
+        return templates.TemplateResponse("index.html", {"request": request})
+    
+    # Direct file read if TemplateResponse fails
+    with open(index_path, "r", encoding="utf-8") as f:
+        return HTMLResponse(content=f.read())
 
 @app.post("/generate")
 async def generate_site(prompt: str = Form(...)):
     if not client:
-        return JSONResponse(status_code=500, content={"success": False, "error": "GROQ_API_KEY is missing."})
+        return JSONResponse(status_code=500, content={"success": False, "error": "GROQ_API_KEY is missing in Railway variables."})
 
     try:
         response = client.chat.completions.create(
