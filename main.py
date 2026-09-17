@@ -1,104 +1,93 @@
 import os
+import json
 import zipfile
 import io
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-import google.generativeai as genai
+from groq import Groq
 
-app = FastAPI(title="WebCraft AI Agent", description="Generates websites from natural language prompts")
+app = FastAPI()
 
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# Configure Gemini API
-# Pass GEMINI_API_KEY as an environment variable in Railway
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
+# Initialize Groq client using Environment Variable
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-SYSTEM_PROMPT = """You are WebCraft AI, an expert web design and coding agent.
-When a user describes a website, you must generate a full, standalone, production-ready website consisting of HTML, CSS, and JS.
+SYSTEM_PROMPT = """
+You are an expert AI web developer.
+The user will provide a description of a website.
+Generate functional, modern HTML, CSS, and JavaScript.
 
-Return ONLY a raw JSON object with the following structure (no markdown fences, no extra text):
+You MUST respond ONLY with a raw JSON object with this EXACT structure (no markdown formatting, no ```json tags):
 {
-  "html": "<!DOCTYPE html>...",
-  "css": "/* CSS Styles */...",
-  "js": "// JavaScript code..."
+  "html": "...only the body content or layout without html/head tags...",
+  "css": "...all styling including responsive styles...",
+  "js": "...all interactive javascript code..."
 }
-
-Design Guidelines:
-- Modern, visually polished, responsive design.
-- Clean typography, CSS variables, sleek dark/light mode accents.
-- Responsive layout using CSS Grid or Flexbox.
-- Functional interactive components where applicable (e.g. navigation toggle, smooth scrolling, modal triggers, dynamic effects).
 """
 
 @app.get("/", response_class=HTMLResponse)
-async def read_index(request: Request):
+async def read_root(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/generate")
-async def generate_website(prompt: str = Form(...)):
-    if not GEMINI_API_KEY:
-        return JSONResponse(
-            status_code=400,
-            content={"error": "GEMINI_API_KEY environment variable is not set. Please set it in your Railway settings."}
-        )
-    
+async def generate_site(prompt: str = Form(...)):
+    if not client:
+        return JSONResponse(status_code=500, content={"success": False, "error": "GROQ_API_KEY is missing."})
+
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        response = model.generate_content(
-            f"{SYSTEM_PROMPT}\n\nUser Request: {prompt}",
-            generation_config={"response_mime_type": "application/json"}
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            response_format={"type": "json_object"}
         )
-        
-        import json
-        data = json.loads(response.text)
-        return JSONResponse(content={
+
+        content = response.choices[0].message.content
+        data = json.loads(content)
+
+        return {
             "success": True,
             "html": data.get("html", ""),
             "css": data.get("css", ""),
             "js": data.get("js", "")
-        })
+        }
     except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"success": False, "error": str(e)})
 
 @app.post("/download")
 async def download_zip(html: str = Form(...), css: str = Form(...), js: str = Form(...)):
+    full_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generated Website</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    {html}
+    <script src="app.js"></script>
+</body>
+</html>"""
+
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        zip_file.writestr("index.html", html)
-        zip_file.writestr("css/style.css", css)
-        zip_file.writestr("js/script.js", js)
-        
-        # Add a helpful README
-        readme_content = """# Your Generated Website
-
-This website was built using WebCraft AI Agent.
-
-## Folder Structure:
-- index.html (Main Page)
-- css/style.css (Styles)
-- js/script.js (Interactivity)
-
-## Hosting Options:
-1. GitHub Pages: Push to GitHub and enable Pages under Settings > Pages.
-2. Netlify: Drag & drop this folder into https://app.netlify.com/drop
-3. Vercel: Import your GitHub repo to Vercel for instant deployment.
-"""
-        zip_file.writestr("README.md", readme_content)
+        zip_file.writestr("index.html", full_html)
+        zip_file.writestr("style.css", css)
+        zip_file.writestr("app.js", js)
 
     zip_buffer.seek(0)
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={"Content-Disposition": "attachment; filename=generated_website.zip"}
+        headers={"Content-Disposition": "attachment; filename=website.zip"}
     )
-
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
